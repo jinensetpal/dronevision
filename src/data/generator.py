@@ -67,7 +67,12 @@ class RandomBBoxGenerator(tf.keras.utils.Sequence):
         xml = os.path.join(os.getcwd(), 'data', 'annotations', 'train', f'{ID.split("/")[-1].split(".")[0]}.xml')
         for dim in ET.parse(xml).getroot()[-1][-1]:
             res.append(int(round(float(dim.text))))
-        return res
+        return res # left, top, right, bottom
+
+    @staticmethod
+    def random_bbox():
+        v = [randint(0, v) for v in self.dim[0]]
+        return [min(v[0], v[2]), min(v[1], v[3]), max(v[0], v[2]), max(v[1], v[3])] # left, top, right, bottom 
 
     def __data_generation(self, list_IDs_temp):
         'Generates data containing batch_size samples' # X : (n_samples, *dim, n_channels)
@@ -81,7 +86,7 @@ class RandomBBoxGenerator(tf.keras.utils.Sequence):
             # load images
             img = Image.open(os.path.join(ID))
             X[i] = img.crop(self.read_xml(ID)).resize(self.dim[::-1])
-            X[self.batch_size+i] = img.crop(self.read_xml(ID)).resize(self.dim[::-1])
+            X[self.batch_size+i] = img.crop(self.random_bbox()).resize(self.dim[::-1])
 
             if self.state == "train":
                 params = self.augmentation_params() # randomize on seed
