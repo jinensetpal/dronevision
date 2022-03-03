@@ -40,6 +40,8 @@ def plot_decision_regions(X, y, classifier, test_idx=None, resolution=0.02):
                     s=100, label='test_set')
 
 if __name__ == '__main__':
+    ## TODO: SETUP GENERATORS HERE
+
     sc = StandardScaler()
     sc.fit(X_train)
     X_train_std = sc.transform(X_train)
@@ -57,3 +59,4 @@ if __name__ == '__main__':
     plt.legend(loc='upper left')
     plt.tight_layout()
     plt.show()
+    ## gaussians kernel 
