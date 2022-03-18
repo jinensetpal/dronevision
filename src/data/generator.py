@@ -7,25 +7,35 @@ import tensorflow as tf
 from PIL import Image
 from src import const
 from glob import glob
+from pathlib import Path
 import numpy as np
 import imageio
 import random
 import os
 
 def create_samples(generator):
-    Path(save_dir).mkdir(parents=True, exist_ok=True)
-    for i, (input_lr, input_hr) in enumerate(generator):
-        imageio.imwrite(os.path.join('samples', f'hr_{i + 1}.png'), input_hr[0])
-        imageio.imwrite(os.path.join('samples', f'lr_{i + 1}.png'), input_lr[0])
+    Path('samples').mkdir(parents=True, exist_ok=True)
+    X, y = generator.__getitem__(0)
+    for i in range(const.BATCH_SIZE):
+        imageio.imwrite(os.path.join('samples', f'{i + 1}_{y[i]}.png'), X[i])
+
+def get_image_paths():
+    paths = []
+    for directory in ['train', 'val']:
+        paths.append(list(set(map(lambda x: x.split('/')[-1].split('.')[0], glob(os.path.join(os.getcwd(), 'data', 'images', directory, '*')))) & 
+            set(map(lambda x: x.split('/')[-1].split('.')[0], glob(os.path.join(os.getcwd(), 'data', 'annotations', directory, '*'))))))
+
+    return paths 
 
 class RandomBBoxGenerator(tf.keras.utils.Sequence):
-    def __init__(self, list_IDs, batch_size, dim, n_channels,
+    def __init__(self, list_IDs, batch_size, dim, n_channels, base_dir = '.',
             shuffle=True, state="train", augment=None, seed=None):
         self.dim = dim
         self.batch_size = batch_size // 2
         self.list_IDs = list_IDs
         self.n_channels = n_channels
         self.shuffle = shuffle
+        self.base_dir = base_dir
         self.state = state
         self.augment = augment
         self.seed = seed
@@ -70,8 +80,8 @@ class RandomBBoxGenerator(tf.keras.utils.Sequence):
         return res # left, top, right, bottom
 
     @staticmethod
-    def random_bbox():
-        v = [randint(0, v) for v in self.dim[0]]
+    def random_bbox(bounds):
+        v = [random.randint(0, v) for v in bounds]
         return [min(v[0], v[2]), min(v[1], v[3]), max(v[0], v[2]), max(v[1], v[3])] # left, top, right, bottom 
 
     def __data_generation(self, list_IDs_temp):
@@ -82,25 +92,35 @@ class RandomBBoxGenerator(tf.keras.utils.Sequence):
 
         # Generate data
         for i, ID in enumerate(list_IDs_temp):
+            ID = os.path.join(self.base_dir, 'images', self.state, f'{ID}.png')
 
-            # load images
-            img = Image.open(os.path.join(ID))
+            img = Image.open(ID)
             X[i] = img.crop(self.read_xml(ID)).resize(self.dim[::-1])
-            X[self.batch_size+i] = img.crop(self.random_bbox()).resize(self.dim[::-1])
+            X[self.batch_size+i] = img.crop(self.random_bbox(img.getbbox())).resize(self.dim[::-1])
+
+            y[i] = 1
+            y[self.batch_size+i] = 0
 
             if self.state == "train":
                 params = self.augmentation_params() # randomize on seed
                 X[i,] = self.gen.apply_transform(x=X[i,], transform_parameters=params)
                 X[self.batch_size+i,] = self.gen.apply_transform(x=X[self.batch_size+i,], transform_parameters=params)
 
-        return X, y
+        order = np.arange(self.batch_size * 2)
+        np.random.shuffle(order)
+
+        return X[order], y[order]
 
 if __name__ == '__main__':
-    data_image_paths = glob(os.path.join(os.getcwd(), 'data', 'images', 'train', '*'))
-    params = {'dim': const.TARGET_SIZE,
+    train_image_paths, val_image_paths = get_image_paths()
+    params = {'base_dir': os.path.join(os.getcwd(), 'data'),
+            'dim': const.TARGET_SIZE,
             'batch_size': const.BATCH_SIZE,
             'n_channels': 3,
             'shuffle': True,
             'augment': {'rescale': 1/255}}
-    generator = RandomBBoxGenerator(data_image_paths, state='train', seed=const.SEED, **params)
-    batch = generator.__getitem__(0)
+    train = RandomBBoxGenerator(train_image_paths, state='train', seed=const.SEED, **params)
+    val = RandomBBoxGenerator(val_image_paths, state='val', seed=const.SEED, **params)
+    batch = train.__getitem__(0)
+    create_samples(train)
+

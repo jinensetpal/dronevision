@@ -1,62 +1,52 @@
 #!/usr/bin/env python3
 
-from sklearn.svm import SVC
-from sklearn import datasets
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
-import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap
+from tensorflow.keras.layers import Conv2D, Flatten, Dense
+from src.data.generator import RandomBBoxGenerator, get_image_paths
+from tensorflow.keras.regularizers import l2
+from tensorflow.keras import Input
+from tensorflow.keras import layers
+import tensorflow as tf
+from src import const
 import numpy as np
+import os
 
+def build_model(input_shape):
+    model = tf.keras.Sequential()
+    model.add(Input(shape=input_shape, batch_size=const.BATCH_SIZE))
+    model.add(layers.Conv2D(32, (3, 3), activation='relu'))
+    model.add(layers.MaxPooling2D((2, 2)))
+    model.add(layers.Conv2D(32, (3, 3), activation='relu'))
+    model.add(layers.MaxPooling2D((2, 2)))
+    model.add(layers.Conv2D(32, (3, 3), activation='relu'))
+    model.add(layers.MaxPooling2D((2, 2)))
+    model.add(layers.Conv2D(64, (3, 3), activation='relu'))
+    model.add(Flatten())
+    model.add(Dense(128,activation="relu"))
+    # model.add(Dense(1, kernel_regularizer=l2(0.01), activation = "linear"))
+    model.add(Dense(1, activation='softmax'))
 
-def plot_decision_regions(X, y, classifier, test_idx=None, resolution=0.02):
-    # set markers and color map
-    markers = ('s', 'x', 'o', '^', 'v')
-    colors = ('red', 'blue', 'lightgreen', 'gray', 'cyan')
-    cmap = ListedColormap(colors[:len(np.unique(y))])
-
-    # plot the decision surface
-    x1_min, x1_max = X[:, 0].min() - 1, X[:, 0].max() + 1
-    x2_min, x2_max = X[:, 1].min() - 1, X[:, 0].max() + 1
-    xx1, xx2 = np.meshgrid(np.arange(x1_min, x2_max, resolution),
-            np.arange(x2_min, x1_max, resolution))
-    Z = classifier.predict(np.array([xx1.ravel(), xx2.ravel()]).T)
-    Z = Z.reshape(xx1.shape)
-    plt.contourf(xx1, xx2, Z, alpha=0.3, cmap=cmap)
-    plt.xlim(xx1.min(), xx1.max())
-    plt.ylim(xx2.min(), xx2.max())
-
-    for idx, cl in enumerate(np.unique(y)):
-        plt.scatter(x=X[y == cl, 0], y=X[y == cl, 1],
-                alpha=0.8, c=colors[idx],
-                marker=markers[idx], label=cl,
-                edgecolors='black')  # highlight test examples
-        if test_idx:
-            X_test, y_test = X[test_idx, :], y[test_idx]
-
-            plt.scatter(X_test[:, 0], X_test[:, 1],
-                    c='', edgecolors='black', alpha=1.0,
-                    linewidths=1, marker='o',
-                    s=100, label='test_set')
+    return model
 
 if __name__ == '__main__':
-    ## TODO: SETUP GENERATORS HERE
+    train_image_paths, val_image_paths = get_image_paths()
+    params = {'base_dir': os.path.join(os.getcwd(), 'data'),
+            'dim': const.TARGET_SIZE,
+            'batch_size': const.BATCH_SIZE,
+            'seed': const.SEED,
+            'n_channels': 3,
+            'shuffle': True,
+            'augment': {'rescale': 1/255}}
+    train = RandomBBoxGenerator(train_image_paths, state='train', **params)
+    val = RandomBBoxGenerator(val_image_paths, state='val', **params)
+    
+    print(train.__getitem__(0)[0].shape)
 
-    sc = StandardScaler()
-    sc.fit(X_train)
-    X_train_std = sc.transform(X_train)
-    X_test_std = sc.transform(X_test)
+    model = build_model(const.TARGET_SHAPE)
+    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    model.summary()
 
-    X_combined_std = np.vstack((X_train_std, X_test_std))
-    y_combined = np.hstack((y_train, y_test))
-
-    svm = SVC(kernel='linear', C=1.0, random_state=1)
-    svm.fit(X_train_std, y_train)
-    plot_decision_regions(X=X_combined_std,
-            y=y_combined,
-            classifier=svm,
-            test_idx=range(105, 150))
-    plt.legend(loc='upper left')
-    plt.tight_layout()
-    plt.show()
-    ## gaussians kernel 
+    history = model.fit(train,
+                        epochs=const.EPOCHS,
+                        validation_data=val,
+                        verbose=1)
+    model.save(os.path.join('models', 'svm'))
