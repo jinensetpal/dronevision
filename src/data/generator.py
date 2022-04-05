@@ -72,9 +72,9 @@ class RandomBBoxGenerator(tf.keras.utils.Sequence):
         return params 
 
     @staticmethod
-    def read_xml(ID):
+    def read_xml(ID, state='train'):
         res = []
-        xml = os.path.join(os.getcwd(), 'data', 'annotations', 'train', f'{ID.split("/")[-1].split(".")[0]}.xml')
+        xml = os.path.join(os.getcwd(), 'data', 'annotations', state, f'{ID.split("/")[-1].split(".")[0]}.xml')
         for dim in ET.parse(xml).getroot()[-1][-1]:
             res.append(int(round(float(dim.text))))
         return res # left, top, right, bottom
@@ -95,7 +95,7 @@ class RandomBBoxGenerator(tf.keras.utils.Sequence):
             ID = os.path.join(self.base_dir, 'images', self.state, f'{ID}.png')
 
             img = Image.open(ID)
-            X[i] = img.crop(self.read_xml(ID)).resize(self.dim[::-1])
+            X[i] = img.crop(self.read_xml(ID, state=self.state)).resize(self.dim[::-1])
             X[self.batch_size+i] = img.crop(self.random_bbox(img.getbbox())).resize(self.dim[::-1])
 
             y[i] = 1

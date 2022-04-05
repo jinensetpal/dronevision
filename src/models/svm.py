@@ -39,9 +39,6 @@ if __name__ == '__main__':
     train = RandomBBoxGenerator(train_image_paths, state='train', **params)
     val = RandomBBoxGenerator(val_image_paths, state='val', **params)
     
-    print(train.__getitem__(0)[0].shape)
-    print(train.__getitem__(0)[1])
-
     model = build_model(const.TARGET_SHAPE)
     model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
     model.summary()
