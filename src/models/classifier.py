@@ -23,9 +23,19 @@ def build_model(input_shape):
     model.add(layers.Conv2D(64, (3, 3), activation='relu'))
     model.add(layers.Flatten())
     model.add(layers.Dense(64, activation='relu'))
-    model.add(layers.Dense(1, activation='softmax')) 
+    model.add(layers.Dense(1, activation='sigmoid')) 
 
     return model
+
+def get_callbacks():
+    es = tf.keras.callbacks.EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=5, restore_best_weights=True)
+    return es
+
+def quantize(model):
+    converter = tf.lite.TFLiteConverter.from_keras_model(q_aware_model)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+
+    return converter.convert()
 
 if __name__ == '__main__':
     train_image_paths, val_image_paths = get_image_paths()
@@ -40,11 +50,17 @@ if __name__ == '__main__':
     val = RandomBBoxGenerator(val_image_paths, state='val', **params)
     
     model = build_model(const.TARGET_SHAPE)
+    model = tfmot.quantization.keras.quantize_model(model) 
+
     model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
     model.summary()
 
     history = model.fit(train,
                         epochs=const.EPOCHS,
                         validation_data=val,
+                        callbacks=get_callbacks(),
                         verbose=1)
-    model.save(os.path.join('models', 'svm'))
+    model = quantize(model)
+
+    with open(os.path.join('models', 'classifier_quantized.tflite'), 'wb') as file:
+        file.write(model)
