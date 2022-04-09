@@ -2,12 +2,12 @@
 
 from tensorflow.keras.layers import Conv2D, Flatten, Dense
 from src.data.generator import RandomBBoxGenerator, get_image_paths
-from tensorflow.keras.regularizers import l2
-from tensorflow.keras import Input
+import tensorflow_model_optimization as tfmot
 from tensorflow.keras import layers
 import tensorflow as tf
 from src import const
 import numpy as np
+import mlflow
 import os
 
 def build_model(input_shape):
@@ -32,7 +32,7 @@ def get_callbacks():
     return es
 
 def quantize(model):
-    converter = tf.lite.TFLiteConverter.from_keras_model(q_aware_model)
+    converter = tf.lite.TFLiteConverter.from_keras_model(model)
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
 
     return converter.convert()
@@ -49,18 +49,28 @@ if __name__ == '__main__':
     train = RandomBBoxGenerator(train_image_paths, state='train', **params)
     val = RandomBBoxGenerator(val_image_paths, state='val', **params)
     
-    model = build_model(const.TARGET_SHAPE)
-    model = tfmot.quantization.keras.quantize_model(model) 
+    mlflow.tensorflow.autolog()
+    with mlflow.start_run():
+      model = build_model(const.TARGET_SHAPE)
 
-    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-    model.summary()
+      model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+      model.summary()
 
-    history = model.fit(train,
-                        epochs=const.EPOCHS,
-                        validation_data=val,
-                        callbacks=get_callbacks(),
-                        verbose=1)
-    model = quantize(model)
+      history = model.fit(train,
+                          epochs=const.EPOCHS,
+                          validation_data=val,
+                          callbacks=get_callbacks(),
+                          verbose=1)
+      model.save(os.path.join('models', 'classifier'))
+    
+      model = tfmot.quantization.keras.quantize_model(model) 
+      model.compile(optimizer='adam' , loss='binary_crossentropy', metrics=['accuracy'])
+      model.summary()
+      history = model.fit(train,
+                          epochs=2,
+                          validation_data=val,
+                          verbose=1)
+      model = quantize(model)
 
-    with open(os.path.join('models', 'classifier_quantized.tflite'), 'wb') as file:
-        file.write(model)
+      with open(os.path.join('models', 'classifier_quantized.tflite'), 'wb') as file:
+          file.write(model)
